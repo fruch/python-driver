@@ -365,7 +365,7 @@ class HostConnection(object):
 
         log.debug("Initializing connection for host %s", self.host)
         first_connection = session.cluster.connection_factory(self.host.endpoint)
-        log.debug("First connection created to %s for shard_id=%i", self.host, first_connection.shard_id)
+        log.debug("First connection created to %s for shard_id=%i (%i)", self.host, first_connection.shard_id, id(first_connection))
         self._connections[first_connection.shard_id] = first_connection
         self._keyspace = session.keyspace
 
@@ -526,7 +526,7 @@ class HostConnection(object):
             if self.is_shutdown:
                 return
 
-        conn = self._session.cluster.connection_factory(self.host.endpoint)
+        conn = self._session.cluster.connection_factory(self.host.endpoint, shard_id=shard_id, total_shards=self.host.sharding_info.shards_count)
         if conn.shard_id not in self._connections.keys():
             log.debug(
                 "New connection created to shard_id=%i on host %s",

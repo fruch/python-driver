@@ -15,6 +15,7 @@ import os
 import time
 import random
 from subprocess import run
+import logging
 
 try:
     from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -28,9 +29,11 @@ except ImportError:
 
 from cassandra.cluster import Cluster
 from cassandra.policies import TokenAwarePolicy, RoundRobinPolicy, ConstantReconnectionPolicy
-from cassandra import OperationTimedOut
+from cassandra import OperationTimedOut, ConsistencyLevel
 
 from tests.integration import use_cluster, get_node
+
+LOGGER = logging.getLogger(__name__)
 
 
 def setup_module():
@@ -44,9 +47,8 @@ class TestShardAwareIntegration(unittest.TestCase):
         cls.cluster = Cluster(protocol_version=4, load_balancing_policy=TokenAwarePolicy(RoundRobinPolicy()),
                               reconnection_policy=ConstantReconnectionPolicy(1))
         cls.session = cls.cluster.connect()
-
-        print(cls.cluster.is_shard_aware())
-        print(cls.cluster.shard_aware_stats())
+        LOGGER.info(cls.cluster.is_shard_aware())
+        LOGGER.info(cls.cluster.shard_aware_stats())
 
     @classmethod
     def teardown_class(cls):
@@ -56,7 +58,7 @@ class TestShardAwareIntegration(unittest.TestCase):
         traces = results.get_query_trace()
         events = traces.events
         for event in events:
-            print(event.thread_name, event.description)
+            LOGGER.info("%s %s", event.thread_name, event.description)
         for event in events:
             self.assertEqual(event.thread_name, shard_name)
         self.assertIn('querying locally', "\n".join([event.description for event in events]))
@@ -65,7 +67,7 @@ class TestShardAwareIntegration(unittest.TestCase):
         traces = self.session.execute("SELECT * FROM system_traces.events WHERE session_id = %s", (trace_id,))
         events = [event for event in traces]
         for event in events:
-            print(event.thread, event.activity)
+            LOGGER.info("%s %s", event.thread, event.activity)
         for event in events:
             self.assertEqual(event.thread, shard_name)
         self.assertIn('querying locally', "\n".join([event.activity for event in events]))

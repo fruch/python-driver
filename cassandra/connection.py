@@ -673,7 +673,7 @@ class Connection(object):
                  ssl_options=None, sockopts=None, compression=True,
                  cql_version=None, protocol_version=ProtocolVersion.MAX_SUPPORTED, is_control_connection=False,
                  user_type_map=None, connect_timeout=None, allow_beta_protocol_version=False, no_compact=False,
-                 ssl_context=None):
+                 ssl_context=None, shard_id=None, total_shards=1):
 
         # TODO next major rename host to endpoint and remove port kwarg.
         self.endpoint = host if isinstance(host, EndPoint) else DefaultEndPoint(host, port)
@@ -720,6 +720,9 @@ class Connection(object):
 
         self.lock = RLock()
         self.connected_event = Event()
+        self.shard_id = shard_id
+        self.total_shards = total_shards
+        print(f'__init__ shard_id={shard_id}, total_shards={total_shards}')
 
     @property
     def host(self):
@@ -782,6 +785,20 @@ class Connection(object):
         self._socket = self.ssl_context.wrap_socket(self._socket, **ssl_options)
 
     def _initiate_connection(self, sockaddr):
+        if self.shard_id is not None:
+            # TODO: move to constructor
+            def port_generator():
+                for p in range(32768, 60999):
+                    if p % self.total_shards == self.shard_id:
+                        yield p
+
+            for port in port_generator():
+                try:
+                    self._socket.bind(('', port))
+                    break
+                except Exception as ex:
+                    print(ex)
+
         self._socket.connect(sockaddr)
 
     def _match_hostname(self):
@@ -813,6 +830,8 @@ class Connection(object):
                     self._socket = self._ssl_impl.wrap_socket(self._socket, **self.ssl_options)
                 self._socket.settimeout(self.connect_timeout)
                 self._initiate_connection(sockaddr)
+                port = self._socket.getsockname()[1]
+                print(f'connection ({id(self)}) port={port} should be shard_id={port % self.total_shards}')
                 self._socket.settimeout(None)
                 if self._check_hostname:
                     self._match_hostname()
